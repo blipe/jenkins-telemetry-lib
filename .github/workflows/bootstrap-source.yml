@@ -1,0 +1,46 @@
+name: Bootstrap source tree
+
+on:
+  push:
+    branches:
+      - agent/real-jenkins-validation
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-source:
+    if: ${{ hashFiles('bootstrap/source.tar.xz') != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out bootstrap branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize complete source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tar -xJf bootstrap/source.tar.xz -C "$work"
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$work"/. .
+          rm -rf bootstrap .github/workflows/bootstrap-source.yml
+
+      - name: Verify dependency-free suite
+        shell: bash
+        run: ./scripts/verify-all.sh
+
+      - name: Commit complete source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Jenkins telemetry library"
+          git push origin HEAD:agent/real-jenkins-validation
