@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/real-jenkins-validation
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -18,6 +21,7 @@ jobs:
       - name: Check out bootstrap branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Materialize complete source tree
