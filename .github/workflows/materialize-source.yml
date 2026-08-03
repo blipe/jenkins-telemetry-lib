@@ -1,6 +1,9 @@
 name: Materialize Jenkins telemetry source
 
 on:
+  push:
+    branches: [main]
+    paths: [.materialize-trigger]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
