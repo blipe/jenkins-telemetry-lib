@@ -1,0 +1,161 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE_NAMESPACE = 'commerce'
+        SERVICE_NAME = 'orders'
+        DEPLOY_ENVIRONMENT = 'production'
+        K8S_NAMESPACE = 'commerce-prod'
+        K8S_CLUSTER = 'corp-us-central'
+        REGISTRY = 'registry.example.com'
+        IMAGE_REPOSITORY = 'commerce/orders'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    jenkinsTelemetry.release(
+                        serviceNamespace: env.SERVICE_NAMESPACE,
+                        serviceName: env.SERVICE_NAME
+                    )
+                }
+            }
+        }
+
+        stage('Build and publish image') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(name: 'Build application', kind: 'BUILD') { op ->
+                        sh './mvnw -B clean verify'
+                        op.count('jenkins.builds.completed', 1)
+                    }
+
+                    jenkinsTelemetry.observe(name: 'Publish OCI image', kind: 'PUBLISH') { op ->
+                        String revision = env.GIT_COMMIT ?: sh(
+                            returnStdout: true,
+                            script: 'git rev-parse HEAD'
+                        ).trim()
+                        String image = "${env.REGISTRY}/${env.IMAGE_REPOSITORY}:${revision}"
+                        withCredentials([usernamePassword(
+                            credentialsId: 'container-registry',
+                            usernameVariable: 'REGISTRY_USER',
+                            passwordVariable: 'REGISTRY_TOKEN'
+                        )]) {
+                            sh """#!/usr/bin/env bash
+set -euo pipefail
+echo "\$REGISTRY_TOKEN" |
+  docker login '${env.REGISTRY}' --username "\$REGISTRY_USER" --password-stdin
+docker build -t '${image}' .
+docker push '${image}'
+"""
+                        }
+
+                        String repoDigest = sh(
+                            returnStdout: true,
+                            script: "docker inspect --format='{{index .RepoDigests 0}}' '${image}'"
+                        ).trim()
+                        String digest = repoDigest.substring(repoDigest.indexOf('@') + 1)
+
+                        jenkinsTelemetry.artifacts().oci(
+                            repository: env.REGISTRY,
+                            image: env.IMAGE_REPOSITORY,
+                            version: revision,
+                            digest: digest,
+                            uri: repoDigest
+                        )
+                        env.DEPLOY_IMAGE = repoDigest
+                        env.DEPLOY_DIGEST = digest
+                        op.log('Image ready for Kubernetes', [image: repoDigest])
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    String revision = env.GIT_COMMIT ?: sh(
+                        returnStdout: true,
+                        script: 'git rev-parse HEAD'
+                    ).trim()
+                    String deploymentId =
+                        "${env.JOB_NAME}-${env.BUILD_NUMBER}-${revision.take(12)}"
+
+                    Map runtime = jenkinsTelemetry.runtimeManifest(
+                        environment: env.DEPLOY_ENVIRONMENT,
+                        deploymentId: deploymentId,
+                        file: 'release-manifest.json'
+                    )
+
+                    writeFile(file: 'deployment.generated.yaml', text: """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${env.SERVICE_NAME}
+  namespace: ${env.K8S_NAMESPACE}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${env.SERVICE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${env.SERVICE_NAME}
+        app.kubernetes.io/version: "${revision}"
+        delivery.example.com/deployment-id: "${deploymentId}"
+    spec:
+      containers:
+        - name: ${env.SERVICE_NAME}
+          image: ${env.DEPLOY_IMAGE}
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: '${runtime.environment.OTEL_SERVICE_NAME}'
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: '${runtime.environment.OTEL_RESOURCE_ATTRIBUTES}'
+          ports:
+            - name: http
+              containerPort: 8080
+""".stripIndent())
+
+                    jenkinsTelemetry.deployment(
+                        deploymentId: deploymentId,
+                        environment: env.DEPLOY_ENVIRONMENT,
+                        target: env.SERVICE_NAME,
+                        cluster: env.K8S_CLUSTER,
+                        namespace: env.K8S_NAMESPACE,
+                        artifactUri: env.DEPLOY_IMAGE,
+                        artifactDigest: env.DEPLOY_DIGEST
+                    ) { op ->
+                        sh(label: 'Apply Kubernetes deployment',
+                           script: 'kubectl apply -f deployment.generated.yaml')
+                        sh(label: 'Wait for rollout', script: """\
+kubectl --namespace '${env.K8S_NAMESPACE}' \
+  rollout status deployment/'${env.SERVICE_NAME}' \
+  --timeout=10m
+""")
+
+                        // Verify actual pod image IDs, not only the requested Deployment template.
+                        String imageIds = sh(returnStdout: true, script: """\
+kubectl --namespace '${env.K8S_NAMESPACE}' \
+  get pods -l app.kubernetes.io/name='${env.SERVICE_NAME}' \
+  -o jsonpath='{range .items[*].status.containerStatuses[*]}{.imageID}{"\\n"}{end}'
+""").trim()
+                        if (!imageIds.readLines().every { it.endsWith("@${env.DEPLOY_DIGEST}") }) {
+                            error("Not every running pod uses digest ${env.DEPLOY_DIGEST}: ${imageIds}")
+                        }
+
+                        op.event('deployment.image.verified', [imageIds: imageIds.readLines()])
+                        op.count('jenkins.deployments.verified', 1,
+                            [environment: env.DEPLOY_ENVIRONMENT])
+                    }
+
+                    archiveArtifacts artifacts: 'release-manifest.json,deployment.generated.yaml',
+                                     fingerprint: true
+                }
+            }
+        }
+    }
+}

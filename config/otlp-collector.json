@@ -1,0 +1,29 @@
+{
+  "journal": {
+    "maxBytes": 1073741824,
+    "segmentBytes": 8388608,
+    "forceWrites": false
+  },
+  "export": {
+    "enabled": true,
+    "batchRecords": 512,
+    "batchBytes": 2097152,
+    "timeoutMillis": 30000,
+    "retryInitialMillis": 1000,
+    "retryMaxMillis": 60000
+  },
+  "collectors": [
+    {
+      "id": "corp-otlp",
+      "type": "otlp-http-json",
+      "signals": ["logs", "metrics", "traces"],
+      "config": {
+        "endpoint": "https://otel-gateway.example.com:4318",
+        "gzip": "true",
+        "connectTimeoutMillis": "10000",
+        "requestTimeoutMillis": "30000",
+        "header.Authorization": "Bearer ${credential:jenkins-telemetry-otlp-token}"
+      }
+    }
+  ]
+}

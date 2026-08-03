@@ -1,0 +1,99 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE_NAMESPACE = 'commerce'
+        SERVICE_NAME = 'orders'
+        ARTIFACTORY_URL = 'https://artifactory.example.com/artifactory'
+        ARTIFACTORY_REPOSITORY = 'libs-release-local'
+        GROUP_PATH = 'com/acme/commerce'
+        ARTIFACT_ID = 'orders'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    jenkinsTelemetry.release(
+                        serviceNamespace: env.SERVICE_NAMESPACE,
+                        serviceName: env.SERVICE_NAME
+                    )
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(name: 'Maven package', kind: 'BUILD') { op ->
+                        sh './mvnw -B clean package'
+                        op.count('jenkins.maven.packages', 1)
+                    }
+                }
+            }
+        }
+
+        stage('Publish to Artifactory') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(
+                        name: 'Publish Maven artifact',
+                        kind: 'PUBLISH',
+                        attributes: [repository: env.ARTIFACTORY_REPOSITORY]
+                    ) { op ->
+                        String revision = env.GIT_COMMIT ?: sh(
+                            returnStdout: true,
+                            script: 'git rev-parse HEAD'
+                        ).trim()
+                        String version = "${env.BUILD_NUMBER}-${revision.take(12)}"
+                        String jar = sh(
+                            returnStdout: true,
+                            script: "find target -maxdepth 1 -name '*.jar' ! -name '*sources*' | head -1"
+                        ).trim()
+                        String destination =
+                            "${env.ARTIFACTORY_URL}/${env.ARTIFACTORY_REPOSITORY}/" +
+                            "${env.GROUP_PATH}/${env.ARTIFACT_ID}/${version}/" +
+                            "${env.ARTIFACT_ID}-${version}.jar"
+
+                        withCredentials([usernamePassword(
+                            credentialsId: 'artifactory-publisher',
+                            usernameVariable: 'ART_USER',
+                            passwordVariable: 'ART_TOKEN'
+                        )]) {
+                            sh(label: 'Upload JAR to Artifactory', script: """#!/usr/bin/env bash
+set -euo pipefail
+curl --fail --silent --show-error \
+  --user "\$ART_USER:\$ART_TOKEN" \
+  --upload-file '${jar}' \
+  '${destination}'
+""")
+                        }
+
+                        String sha256 = sh(
+                            returnStdout: true,
+                            script: "sha256sum '${jar}' | cut -d' ' -f1"
+                        ).trim()
+                        long bytes = sh(
+                            returnStdout: true,
+                            script: "wc -c < '${jar}'"
+                        ).trim().toLong()
+
+                        jenkinsTelemetry.artifacts().maven(
+                            logicalName: 'primary',
+                            repository: env.ARTIFACTORY_REPOSITORY,
+                            groupId: 'com.acme.commerce',
+                            artifactId: env.ARTIFACT_ID,
+                            version: version,
+                            digest: sha256,
+                            uri: destination,
+                            attributes: [sizeBytes: bytes]
+                        )
+                        op.measure('jenkins.artifact.size', bytes, 'By')
+                        op.log('Published immutable Maven artifact', [artifactUri: destination])
+                    }
+                }
+            }
+        }
+    }
+}

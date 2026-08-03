@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE_NAMESPACE = 'commerce'
+        SERVICE_NAME = 'orders'
+        IMAGE_REPOSITORY = 'registry.example.com/commerce/orders'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    jenkinsTelemetry.release(
+                        serviceNamespace: env.SERVICE_NAMESPACE,
+                        serviceName: env.SERVICE_NAME
+                    )
+                }
+            }
+        }
+
+        stage('Build and publish') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(name: 'Build OCI image', kind: 'BUILD') { op ->
+                        sh "docker build -t '${IMAGE_REPOSITORY}:${GIT_COMMIT}' ."
+                        sh "docker push '${IMAGE_REPOSITORY}:${GIT_COMMIT}'"
+
+                        String digest = sh(
+                            returnStdout: true,
+                            script: "docker inspect --format='{{index .RepoDigests 0}}' " +
+                                "'${IMAGE_REPOSITORY}:${GIT_COMMIT}' | sed 's/^.*@//'"
+                        ).trim()
+
+                        jenkinsTelemetry.artifacts().oci(
+                            logicalName: 'primary',
+                            repository: 'registry.example.com',
+                            image: 'commerce/orders',
+                            version: env.GIT_COMMIT,
+                            digest: digest
+                        )
+                        op.log('Immutable image published', [digest: digest])
+                    }
+                }
+            }
+        }
+
+        stage('Publish delivery manifest') {
+            steps {
+                script {
+                    Map delivery = jenkinsTelemetry.exportDeliveryManifest(
+                        file: 'delivery-manifest.json',
+                        attributes: [releaseChannel: 'production-candidate']
+                    )
+                    writeFile file: 'delivery-manifest.sha256',
+                        text: "${delivery.sha256}  delivery-manifest.json\n"
+                    archiveArtifacts(
+                        artifacts: 'delivery-manifest.json,delivery-manifest.sha256',
+                        fingerprint: true
+                    )
+                }
+            }
+        }
+    }
+}

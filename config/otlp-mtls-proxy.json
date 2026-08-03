@@ -1,0 +1,35 @@
+{
+  "journal": {
+    "maxBytes": 1073741824,
+    "segmentBytes": 8388608,
+    "forceWrites": true
+  },
+  "export": {
+    "enabled": true,
+    "batchRecords": 512,
+    "batchBytes": 2097152,
+    "timeoutMillis": 30000,
+    "retryInitialMillis": 1000,
+    "retryMaxMillis": 60000
+  },
+  "collectors": [
+    {
+      "id": "corp-otlp-mtls",
+      "type": "otlp-http-json",
+      "signals": ["logs", "metrics", "traces"],
+      "config": {
+        "endpoint": "https://otel-gateway.example.com:4318",
+        "proxyHost": "proxy.example.com",
+        "proxyPort": "8080",
+        "trustStorePath": "/etc/jenkins/telemetry-trust.p12",
+        "trustStoreType": "PKCS12",
+        "trustStorePassword": "${credential:telemetry-truststore-password}",
+        "keyStorePath": "/etc/jenkins/telemetry-client.p12",
+        "keyStoreType": "PKCS12",
+        "keyStorePassword": "${credential:telemetry-client-keystore-password}",
+        "keyPassword": "${credential:telemetry-client-key-password}",
+        "gzip": "true"
+      }
+    }
+  ]
+}
