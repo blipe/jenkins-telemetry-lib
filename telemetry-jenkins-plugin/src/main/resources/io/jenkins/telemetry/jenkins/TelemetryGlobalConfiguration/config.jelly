@@ -1,0 +1,2 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="lib/form"><f:section title="Jenkins Delivery Telemetry"><f:entry title="Configuration file" field="configurationPath"><f:textbox placeholder="$JENKINS_HOME/jenkins-telemetry.json"/></f:entry><f:entry title="Automatic background export" field="automaticExportEnabled"><f:checkbox/></f:entry></f:section></j:jelly>

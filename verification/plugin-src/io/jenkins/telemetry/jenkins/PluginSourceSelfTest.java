@@ -1,0 +1,11 @@
+package io.jenkins.telemetry.jenkins;
+
+import io.jenkins.telemetry.api.Correlation;
+import io.jenkins.telemetry.core.TelemetryEngine;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+
+public final class PluginSourceSelfTest {
+    public static void main(String[] args)throws Exception{Path root=Files.createTempDirectory("jenkins-telemetry-plugin-selftest-");TelemetryRunAction action=new TelemetryRunAction();Correlation correlation=new Correlation("job#7","demo/main","7","https://jenkins/job/demo/7/",null,"demo","7","abcdef",null,null,"0123456789abcdef0123456789abcdef","0123456789abcdef","pipeline");try(TelemetryEngine engine=TelemetryEngine.builder(root.resolve("journal")).build()){ConsoleCaptureOutputStream first=new ConsoleCaptureOutputStream(engine,action,correlation,1024);first.write("partial".getBytes(StandardCharsets.UTF_8));first.finish(false);check(engine.status().logRecords()==0,"partial line is retained, not emitted");ConsoleCaptureOutputStream second=new ConsoleCaptureOutputStream(engine,action,correlation,1024);second.write(" line\n\u001b[31mred\u001b[0m\n".getBytes(StandardCharsets.UTF_8));second.finish(false);check(engine.status().logRecords()==2,"completed lines emitted");ConsoleCaptureOutputStream third=new ConsoleCaptureOutputStream(engine,action,correlation,1024);third.write("tail".getBytes(StandardCharsets.UTF_8));third.finish(true);check(engine.status().logRecords()==3,"final partial line emitted at completion");check(action.consoleRemainder().isEmpty(),"completion clears remainder");}StringBuilder captured=new StringBuilder();try(var paths=Files.list(root.resolve("journal"))){for(Path path:paths.filter(v->v.getFileName().toString().startsWith("logs-")&&v.getFileName().toString().endsWith(".seg")).toList())captured.append(Files.readString(path));}String logs=captured.toString();check(logs.contains("partial line"),"partial line reconstructed");check(logs.contains("red"),"ANSI line retained");check(!logs.contains("\\u001b"),"ANSI escape removed");check(logs.contains("tail"),"completion tail recorded");check(logs.contains("jenkins.console"),"console source attribute recorded");System.out.println("PLUGIN SELFTEST PASSED: "+root);}
+    private static void check(boolean condition,String description){if(!condition)throw new AssertionError(description);}
+}

@@ -1,0 +1,1 @@
+io.jenkins.telemetry.collector.otlp.OtlpJsonTelemetryCollectorFactory

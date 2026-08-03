@@ -1,0 +1,9 @@
+package io.jenkins.telemetry.jenkins;
+
+import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;import org.jenkinsci.plugins.workflow.job.*;import org.junit.*;import org.jvnet.hudson.test.JenkinsRule;import java.nio.file.*;import java.util.stream.Collectors;import static org.junit.Assert.*;
+
+public class JenkinsTelemetryPipelineTest {
+ @Rule public JenkinsRule jenkins=new JenkinsRule();
+ @Test public void recordsAllSignalsAndAutomaticStageSpan()throws Exception{WorkflowJob job=jenkins.createProject(WorkflowJob.class,"telemetry-pipeline");job.setDefinition(new CpsFlowDefinition("jenkinsTelemetry.release(serviceNamespace:'verification',serviceName:'orders',serviceVersion:'1.0.0')\nstage('Build'){jenkinsTelemetry.observe(name:'Compile',kind:'BUILD'){op->op.log('compiling',[component:'compiler']);op.count('compile.units',2,[language:'java']);op.measure('compile.duration',1.25,'s',[language:'java'])}}",true));WorkflowRun run=jenkins.buildAndAssertSuccess(job);TelemetryRunAction action=run.getAction(TelemetryRunAction.class);assertNotNull(action);assertEquals("orders",action.release().serviceName());assertTrue(action.rootCompleted());Path journal=run.getRootDir().toPath().resolve("telemetry").resolve("journal");String logs=segmentText(journal,"logs-");String metrics=segmentText(journal,"metrics-");String traces=segmentText(journal,"traces-");assertTrue(logs.contains("compiling"));assertTrue(metrics.contains("compile.units"));assertTrue(traces.contains("Compile"));assertTrue(traces.contains("Build"));}
+ private static String segmentText(Path directory,String prefix)throws Exception{try(var files=Files.list(directory)){return files.filter(p->p.getFileName().toString().startsWith(prefix)).sorted().flatMap(p->{try{return Files.lines(p);}catch(Exception e){throw new RuntimeException(e);}}).collect(Collectors.joining("\n"));}}
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.jenkins-ci.plugins</groupId>
+    <artifactId>plugin</artifactId>
+    <version>5.28</version>
+    <relativePath/>
+  </parent>
+  <groupId>io.jenkins.telemetry</groupId>
+  <artifactId>jenkins-delivery-telemetry</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>hpi</packaging>
+  <name>Jenkins Delivery Telemetry</name>
+  <description>Logs, metrics, traces, release and deployment correlation with pluggable collectors.</description>
+  <properties>
+    <jenkins.version>2.516.3</jenkins.version>
+    <java.level>17</java.level>
+    <spotless.check.skip>true</spotless.check.skip>
+    <gitHubRepo>blipe/jenkins-telemetry-lib</gitHubRepo>
+  </properties>
+  <repositories><repository><id>repo.jenkins-ci.org</id><url>https://repo.jenkins-ci.org/public/</url></repository></repositories>
+  <pluginRepositories><pluginRepository><id>repo.jenkins-ci.org</id><url>https://repo.jenkins-ci.org/public/</url></pluginRepository></pluginRepositories>
+  <dependencies>
+    <dependency><groupId>io.jenkins.telemetry</groupId><artifactId>telemetry-api</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.jenkins.telemetry</groupId><artifactId>telemetry-core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.jenkins.telemetry</groupId><artifactId>telemetry-collector-file</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.jenkins.telemetry</groupId><artifactId>telemetry-collector-http-json</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.jenkins.telemetry</groupId><artifactId>telemetry-collector-otlp-json</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins.workflow</groupId><artifactId>workflow-step-api</artifactId><version>724.v538c2362b_dfb_</version></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins.workflow</groupId><artifactId>workflow-api</artifactId><version>1413.v2ff1a_5e720fa_</version></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins.workflow</groupId><artifactId>workflow-cps</artifactId><version>4331.4333.v50a_b_076c5199</version></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins</groupId><artifactId>script-security</artifactId><version>1402.1405.vc96e74964250</version></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins.workflow</groupId><artifactId>workflow-job</artifactId><version>1571.1578.v7d89b_831ece9</version><scope>test</scope></dependency>
+    <dependency><groupId>org.jenkins-ci.plugins.workflow</groupId><artifactId>workflow-basic-steps</artifactId><version>1098.v808b_fd7f8cf4</version><scope>test</scope></dependency>
+  </dependencies>
+</project>
