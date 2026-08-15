@@ -1,0 +1,33 @@
+{
+  "journal": {
+    "maxBytes": 536870912,
+    "segmentBytes": 8388608,
+    "forceWrites": true
+  },
+  "export": {
+    "enabled": true,
+    "batchRecords": 1024,
+    "batchBytes": 4194304,
+    "timeoutMillis": 30000,
+    "retryInitialMillis": 1000,
+    "retryMaxMillis": 60000
+  },
+  "redaction": {
+    "replacement": "$1***",
+    "patterns": [
+      "(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s]+",
+      "(?i)((?:password|passwd|pwd|token|secret|api[_-]?key)\\s*[:=]\\s*)[^\\s,;]+"
+    ]
+  },
+  "collectors": [
+    {
+      "id": "local-file",
+      "type": "file",
+      "signals": ["logs", "metrics", "traces"],
+      "config": {
+        "directory": "${env:JENKINS_HOME}/delivery-telemetry-export",
+        "forceWrites": "true"
+      }
+    }
+  ]
+}

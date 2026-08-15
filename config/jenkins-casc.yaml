@@ -1,0 +1,4 @@
+unclassified:
+  telemetryGlobalConfiguration:
+    configurationPath: "/etc/jenkins/jenkins-telemetry.json"
+    automaticExportEnabled: true

@@ -1,0 +1,16 @@
+{
+  "journal": {
+    "maxBytes": 536870912,
+    "segmentBytes": 8388608,
+    "forceWrites": false
+  },
+  "export": {
+    "enabled": false,
+    "batchRecords": 256,
+    "batchBytes": 1048576,
+    "timeoutMillis": 30000,
+    "retryInitialMillis": 1000,
+    "retryMaxMillis": 60000
+  },
+  "collectors": []
+}

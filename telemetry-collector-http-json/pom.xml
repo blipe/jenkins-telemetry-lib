@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.jenkins.telemetry</groupId>
+    <artifactId>jenkins-telemetry-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>telemetry-collector-http-json</artifactId>
+  <dependencies>
+    <dependency>
+      <groupId>io.jenkins.telemetry</groupId>
+      <artifactId>telemetry-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.jenkins.telemetry</groupId>
+      <artifactId>telemetry-core</artifactId>
+    </dependency>
+  </dependencies>
+</project>

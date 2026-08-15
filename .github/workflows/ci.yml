@@ -1,0 +1,70 @@
+name: Maven Verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 with Maven cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Show tool versions
+        run: |
+          java -version
+          mvn --version
+
+      - name: Verify dependency-free core and Jenkins source structure
+        run: ./scripts/verify-all.sh
+
+      - name: Resolve Maven and Jenkins repositories
+        run: |
+          getent ahosts repo.maven.apache.org
+          getent ahosts repo.jenkins-ci.org
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-all-errors \
+            --output /dev/null \
+            --write-out 'Maven Central HTTP %{http_code} remote=%{remote_ip} time=%{time_total}s\n' \
+            https://repo.maven.apache.org/maven2/org/junit/jupiter/junit-jupiter/5.11.4/junit-jupiter-5.11.4.pom
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-all-errors \
+            --output /dev/null \
+            --write-out 'Jenkins repository HTTP %{http_code} remote=%{remote_ip} time=%{time_total}s\n' \
+            https://repo.jenkins-ci.org/public/org/jenkins-ci/plugins/plugin/5.28/plugin-5.28.pom
+
+      - name: Build plugin and run Jenkins Test Harness
+        run: >-
+          mvn --batch-mode --no-transfer-progress --errors
+          -Dspotless.check.skip=true
+          clean verify
+
+      - name: Verify HPI output
+        run: |
+          test -f telemetry-jenkins-plugin/target/jenkins-delivery-telemetry.hpi
+          sha256sum telemetry-jenkins-plugin/target/jenkins-delivery-telemetry.hpi
+
+      - name: Upload HPI and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jenkins-delivery-telemetry-build
+          if-no-files-found: warn
+          path: |
+            telemetry-jenkins-plugin/target/*.hpi
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**

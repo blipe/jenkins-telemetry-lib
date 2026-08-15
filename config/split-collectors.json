@@ -1,0 +1,55 @@
+{
+  "journal": {
+    "maxBytes": 1073741824,
+    "segmentBytes": 8388608,
+    "forceWrites": false
+  },
+  "export": {
+    "enabled": true,
+    "batchRecords": 512,
+    "batchBytes": 2097152,
+    "timeoutMillis": 30000,
+    "retryInitialMillis": 1000,
+    "retryMaxMillis": 60000
+  },
+  "collectors": [
+    {
+      "id": "corp-logs",
+      "type": "http-json",
+      "signals": ["logs"],
+      "config": {
+        "logsEndpoint": "https://logging-gateway.example.com/jenkins/logs",
+        "gzip": "true",
+        "header.Authorization": "Bearer ${credential:jenkins-telemetry-log-token}"
+      }
+    },
+    {
+      "id": "corp-metrics",
+      "type": "http-json",
+      "signals": ["metrics"],
+      "config": {
+        "metricsEndpoint": "https://metrics-gateway.example.com/jenkins/metrics",
+        "gzip": "true",
+        "header.Authorization": "Bearer ${credential:jenkins-telemetry-metric-token}"
+      }
+    },
+    {
+      "id": "corp-traces",
+      "type": "otlp-http-json",
+      "signals": ["traces"],
+      "config": {
+        "tracesEndpoint": "https://trace-gateway.example.com/v1/traces",
+        "gzip": "true",
+        "header.Authorization": "Bearer ${credential:jenkins-telemetry-trace-token}"
+      }
+    },
+    {
+      "id": "audit-copy",
+      "type": "file",
+      "signals": ["logs", "metrics", "traces"],
+      "config": {
+        "directory": "${env:JENKINS_HOME}/delivery-telemetry-audit"
+      }
+    }
+  ]
+}

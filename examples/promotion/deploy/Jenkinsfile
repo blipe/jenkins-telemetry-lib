@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'BUILD_JOB', defaultValue: 'commerce/orders-build')
+        string(name: 'BUILD_NUMBER', description: 'Producing Jenkins build number')
+    }
+
+    stages {
+        stage('Fetch proven release') {
+            steps {
+                // Requires the Copy Artifact plugin. The manifest and its digest may instead be
+                // fetched from Artifactory or another approved promotion repository.
+                copyArtifacts(
+                    projectName: params.BUILD_JOB,
+                    selector: specific(params.BUILD_NUMBER),
+                    filter: 'delivery-manifest.json,delivery-manifest.sha256'
+                )
+
+                script {
+                    String expectedSha256 = readFile('delivery-manifest.sha256')
+                        .trim().tokenize()[0]
+                    Map imported = jenkinsTelemetry.importDeliveryManifest(
+                        file: 'delivery-manifest.json',
+                        sha256: expectedSha256
+                    )
+                    echo "Deploying ${imported.serviceName} ${imported.serviceVersion} " +
+                         "from ${imported.buildUrl}"
+                }
+            }
+        }
+
+        stage('Deploy exact image') {
+            steps {
+                script {
+                    Map release = jenkinsTelemetry.runtimeManifest()
+                    String image = release.values.artifactUri
+                    String digest = release.values.artifactDigest
+
+                    jenkinsTelemetry.deployment(
+                        deploymentId: "orders-prod-${env.BUILD_NUMBER}",
+                        environment: 'production',
+                        target: 'orders',
+                        cluster: 'corp-prod-us-central',
+                        namespace: 'commerce-prod',
+                        artifactUri: image,
+                        artifactDigest: digest
+                    ) { op ->
+                        sh "kubectl -n commerce-prod set image deployment/orders " +
+                           "orders='${image}'"
+                        sh 'kubectl -n commerce-prod rollout status deployment/orders --timeout=10m'
+                        op.event('deployment.verified', [image: image, digest: digest])
+                    }
+                }
+            }
+        }
+    }
+}

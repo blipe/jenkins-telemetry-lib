@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE_NAMESPACE = 'commerce'
+        SERVICE_NAME = 'orders'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    // Git revision, repository, branch, build number, job and URL are discovered.
+                    jenkinsTelemetry.release(
+                        serviceNamespace: env.SERVICE_NAMESPACE,
+                        serviceName: env.SERVICE_NAME
+                    )
+                }
+            }
+        }
+
+        stage('Build and test') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(
+                        name: 'Maven verify',
+                        kind: 'BUILD',
+                        attributes: [buildTool: 'maven']
+                    ) { op ->
+                        op.log('Starting Java build')
+                        sh './mvnw -B clean verify'
+
+                        int reportCount = sh(
+                            returnStdout: true,
+                            script: "find . -path '*/target/surefire-reports/*.xml' -type f | wc -l"
+                        ).trim().toInteger()
+                        op.count('jenkins.test.report.files', reportCount)
+                    }
+                }
+            }
+            post {
+                always {
+                    junit testResults: '**/target/surefire-reports/*.xml',
+                          allowEmptyResults: true
+                }
+            }
+        }
+
+        stage('Record artifact') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(name: 'Record JAR', kind: 'PACKAGE') { op ->
+                        String jar = sh(
+                            returnStdout: true,
+                            script: "find target -maxdepth 1 -name '*.jar' ! -name '*sources*' | head -1"
+                        ).trim()
+                        String sha256 = sh(
+                            returnStdout: true,
+                            script: "sha256sum '${jar}' | cut -d' ' -f1"
+                        ).trim()
+                        long bytes = sh(
+                            returnStdout: true,
+                            script: "wc -c < '${jar}'"
+                        ).trim().toLong()
+
+                        jenkinsTelemetry.artifacts().file(
+                            logicalName: 'primary',
+                            name: jar.tokenize('/').last(),
+                            version: env.BUILD_NUMBER,
+                            digest: sha256,
+                            uri: "jenkins://${env.JOB_NAME}/${env.BUILD_NUMBER}/artifact/${jar}",
+                            attributes: [sizeBytes: bytes]
+                        )
+                        op.measure('jenkins.artifact.size', bytes, 'By')
+                        op.log('JAR recorded')
+                    }
+                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                }
+            }
+        }
+    }
+}

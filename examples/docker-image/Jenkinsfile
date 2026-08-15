@@ -1,0 +1,87 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVICE_NAMESPACE = 'commerce'
+        SERVICE_NAME = 'orders'
+        REGISTRY = 'registry.example.com'
+        IMAGE_REPOSITORY = 'commerce/orders'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    jenkinsTelemetry.release(
+                        serviceNamespace: env.SERVICE_NAMESPACE,
+                        serviceName: env.SERVICE_NAME
+                    )
+                }
+            }
+        }
+
+        stage('Build application') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(name: 'Maven verify', kind: 'BUILD') { op ->
+                        sh './mvnw -B clean verify'
+                        op.log('Application build completed')
+                    }
+                }
+            }
+        }
+
+        stage('Build and publish image') {
+            steps {
+                script {
+                    jenkinsTelemetry.observe(
+                        name: 'Publish OCI image',
+                        kind: 'PUBLISH',
+                        attributes: [registry: env.REGISTRY]
+                    ) { op ->
+                        String revision = env.GIT_COMMIT ?: sh(
+                            returnStdout: true,
+                            script: 'git rev-parse HEAD'
+                        ).trim()
+                        String image = "${env.REGISTRY}/${env.IMAGE_REPOSITORY}:${revision}"
+
+                        withCredentials([usernamePassword(
+                            credentialsId: 'container-registry',
+                            usernameVariable: 'REGISTRY_USER',
+                            passwordVariable: 'REGISTRY_TOKEN'
+                        )]) {
+                            sh(label: 'Build and push image', script: """#!/usr/bin/env bash
+set -euo pipefail
+echo "\$REGISTRY_TOKEN" |
+  docker login '${env.REGISTRY}' --username "\$REGISTRY_USER" --password-stdin
+docker build \
+  --label org.opencontainers.image.revision='${revision}' \
+  --label org.opencontainers.image.version='${revision}' \
+  --tag '${image}' .
+docker push '${image}'
+""")
+                        }
+
+                        String repoDigest = sh(
+                            returnStdout: true,
+                            script: "docker inspect --format='{{index .RepoDigests 0}}' '${image}'"
+                        ).trim()
+                        String digest = repoDigest.substring(repoDigest.indexOf('@') + 1)
+
+                        jenkinsTelemetry.artifacts().oci(
+                            logicalName: 'primary',
+                            repository: env.REGISTRY,
+                            image: env.IMAGE_REPOSITORY,
+                            version: revision,
+                            digest: digest,
+                            uri: repoDigest
+                        )
+                        op.attribute('oci.manifest.digest', digest)
+                        op.log('Published immutable OCI image', [image: repoDigest])
+                    }
+                }
+            }
+        }
+    }
+}
